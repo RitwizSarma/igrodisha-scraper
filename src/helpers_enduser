@@ -1,0 +1,84 @@
+class progressbar():
+    '''Default progress bar used for multiple functions.'''
+    def dispBar(iter, constr,  res):
+        pct = 100 * (iter/constr)
+        blno = int((pct/100) * res)
+        bl_str = "▒" * blno
+        if iter != constr: line_str = "_" * (res-blno)
+        else: line_str = ""
+        print(bl_str+line_str, "%.3f percent done..." %pct, end='\r')
+
+class timecheck:
+    '''Time calculator functionality.'''
+    tms = []
+    constr = int
+
+    def constrfind(id):
+        '''Finds total plots under given registry office.'''
+        global RestrtCh
+        ss = time.time()
+        vil_payl = {'RegoffId':id}
+        vil_json = s.post(vil_api,json=vil_payl).json()
+        pts = 0; i = 0
+        for vil in vil_json['d']:
+            plot_payl = {'StrVillageId':vil['VILL_ID']}
+            plot_json = s.post(plot_api, json=plot_payl).json()
+            pts = pts + len(plot_json['d'])
+            i+=1
+            # print("\rChecking for timecheck constraint: %.3f percent completed..." %((i/len(vil_json['d']))*100), end='\r')
+            progressbar.dispBar(i, len(vil_json['d']), 50)
+        timecheck.constr = pts
+        # if RestrtCh=='y':timecheck.Recalc()
+        ff = time.time()
+        print("\nTotal %i plots to evaluate." %int(pts))
+        print("Calculation took {} mins, {} seconds.".format(*divmod(ff-ss,60)))
+
+    def Recalc():
+        '''Recalculates plots remaining based on files added to directory.'''
+        global DistId, RegName
+        dir = os.path.join(base_dir,str(DistId),RegName)
+        done = len(list(os.scandir(dir)))
+        timecheck.constr = timecheck.constr - done
+
+    def estTimeRemain(start_tm, iter):
+        '''Estimates time remaining based on last 400 iterations.'''
+        tm = time.time() - st
+        timecheck.tms.append(tm)
+        avg = sum(timecheck.tms)/len(timecheck.tms)
+        if len(timecheck.tms)>500:avg = sum(timecheck.tms[-400:])/401
+        rem = timecheck.constr - iter
+        est = avg*rem
+        min_est = int(est//60)
+        hrs, mins = divmod(min_est, 60)
+        if len(timecheck.tms)>100 and len(timecheck.tms)%100==0:print("Estimated time remaining: {}hrs {}mins...".format(int(hrs), int(mins)))
+        if len(timecheck.tms)%400==0:print("Average time per iteration: %.5f seconds." %avg)
+
+def findRegOffs(dist):
+    '''Finds and displays registry offices in a particular district.'''
+    global RegId, RegName
+    i = 0
+    payl = {"distId":dist}
+    json=s.post(regoff_api,json=payl).json()
+    print("There are", len(json['d']), "registration offices in this district.")
+    # print(json['d'][2]['REGOFF_ID'])
+    # df.to_csv("E:/Research/testjson.csv")
+    for regs in json['d']:
+        print(str(i)+".", "\t\t",  regs['REGOFF_ID'], "\t\t", regs['REGOFF_NAME']); i+=1
+    iselect = int(input("Select Registration Office to scrape: "))
+    RegId = json['d'][iselect]['REGOFF_ID']
+    RegName = json['d'][iselect]['REGOFF_NAME']
+    print (RegName, RegId)
+
+def retVill(d_id, regname):
+    '''Counts number of plots assessed based on number of files saved to directory.'''
+    global fctr
+    dir = os.path.join(base_dir,str(d_id),regname)
+    done = len(list(os.scandir(dir)))
+    fctr = done
+    return done*50
+
+def initLists():
+    global dists, regoffs, vils, plots 
+    global kisms, mrvals, dts, txndts 
+    dists, regoffs, vils, plots = [], [], [], []
+    kisms, mrvals, dts, txndts = [], [], [], []

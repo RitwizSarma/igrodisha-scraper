@@ -1,0 +1,92 @@
+class speedcheck:
+    tms = []
+    def look(st):
+        tm = time.time() - st
+        speedcheck.tms.append(tm)
+
+
+def findRegOffs(dist):
+    '''Finds and displays registry offices in a particular district.'''
+    global RegId, RegName
+    i = 0
+    payl = {"distId":dist}
+    json=s.post(regoff_api,json=payl).json()
+    print("There are", len(json['d']), "registration offices in this district.")
+    # print(json['d'][2]['REGOFF_ID'])
+    # df.to_csv("E:/Research/testjson.csv")
+    for regs in json['d']:
+        print(str(i)+".", "\t\t",  regs['REGOFF_ID'], "\t\t", regs['REGOFF_NAME']); i+=1
+    iselect = int(input("Select Registration Office to scrape: "))
+    RegId = json['d'][iselect]['REGOFF_ID']
+    RegName = json['d'][iselect]['REGOFF_NAME']
+    print (RegName, RegId)
+
+def retVill(d_id, regname):
+    '''Counts number of plots assessed based on number of files saved to directory.'''
+    global fctr
+    dir = os.path.join(base_dir,str(d_id),regname)
+    done = len(list(os.scandir(dir)))
+    fctr = done
+    return done*50 - 1
+
+def initLists():
+    global dists, regoffs, vils, plots, ctr
+    global kisms, mrvals, dts, txndts , mrval_strs
+    dists, regoffs, vils, plots = [], [], [], []
+    kisms, mrvals, dts, txndts = [], [], [], []
+    mrval_strs = []
+
+def scrapePlot(plot):
+    global curr_vil, RegId, DistId
+    ksmplt_api = "https://www.igrodisha.gov.in/ViewFeeValue.aspx/GetKismByPlot"
+    ksmplt_payl = {'plotId':plot, 'VillageId':curr_vil}
+    try:
+        ksmplt_json = s.post(ksmplt_api, json=ksmplt_payl).json()
+        ksm = ksmplt_json['d'][0]['PLOTCAT_TYPE']
+        if len(ksmplt_json['d'])>1:
+            ksm = "Multiple kisams found"
+    except:
+        ksm = "No Kisam found"
+    
+    mrval_api = "https://www.igrodisha.gov.in/ViewFeeValue.aspx/GetMRVal"
+    mrval_payl = {'Dist': DistId, 'RegoffId': RegId,'village': curr_vil,'Plot': plot,'Area': "1",'Unit': "1",'unitTest': "Acre"}
+    mrval_json = s.post(mrval_api, json=mrval_payl).json()
+
+    return mrval_json['d']+"@$"+str(ksm)+"@$"+str(curr_vil)+"@$"+str(plot)
+
+def fileDump(mrval_st):
+    global DistId, RegId, ctr, fctr
+    ss = time.time()
+    dists = [DistId for i in range(len(mrval_st))]
+    regoffs = [RegId for i in range(len(mrval_st))]
+    for strn in mrval_st:
+        plot = strn.split("@$")[-1]
+        vill = strn.split("@$")[-2]
+        ksm = strn.split("@$")[-3]
+        try:
+            mrval = strn.split("@$")[1]
+        except:
+            mrval = "error"
+            dt = "error"
+            txndt = "error"
+        else:
+            try:
+                dt = strn.split("@$")[6]
+                txndt = strn.split("@$")[7]
+            except:
+                dt = "error"
+                txndt = "error"
+        vils.append(vill)
+        plots.append(plot)
+        kisms.append(ksm)
+        mrvals.append(mrval)
+        dts.append(dt)
+        txndts.append(txndt)
+    # print(len(dists), len(regoffs),len(vils),len(plots),len(kisms),len(mrvals),len(dts),len(txndts))
+    df = pd.DataFrame({'District':dists, 'RegistrationOff':regoffs, 'Village':vils, 'PlotID':plots, 'Kisam':kisms, 'Value':mrvals, 'Date':dts, 'TransactionDate':txndts})
+    loc = os.path.join(base_dir,str(DistId),str(RegName))
+    if not os.path.exists(loc):os.makedirs(loc)
+    df.to_csv(os.path.join(loc,"{}_{}.csv".format(RegName, fctr+1))); fctr+=1
+    ff = time.time()
+    print("\nSaving directory to", loc, "took %.4f seconds." %(ff-ss), end=".\n")
+    initLists()
